@@ -1,81 +1,124 @@
-import os
+# Import necessary libraries
+import os 
 import dotenv
-import gradio as gr
-from langchain.document_loaders import WebBaseLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
+import streamlit as st
 from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ChatMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableBranch
 
 # Load environment variables
 dotenv.load_dotenv()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-# Load the document from the web
-loader = WebBaseLoader("https://unctad.org/topic/competition-and-consumer-protection/un-guidelines-for-consumer-protection")
-data = loader.load()
+# Setup the chat model
+Model = 'llama3-8b-8192'
+chat = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name=Model)
 
-# Split the document text
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)
-all_splits = text_splitter.split_documents(data)
+# Define the prompt templates
+system_prompt = "You are a helpful assistant."
+human_prompt = "{text}"
+prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human_prompt)])
+
+# Build the conversational chain
+chain = prompt | chat
 
 # Create the embedding model
 embedding = OpenAIEmbeddings()
 
-# Define the directory where embeddings will be stored
-persist_dir = "Embeddings"
+# Define the persistence directory
+persist_dir = 'Embeddings'
 
-# Create the vector store and specify the persistence directory
-# vectorstore = Chroma.from_documents(documents=all_splits, embedding=embedding, persist_directory=persist_dir)
-
-# Load the vector store from disk
-loaded_vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding)
+# Load the vector store
+vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding)
 
 # Define the retriever
-retriever = loaded_vectorstore.as_retriever(k=4)
+retriever = vectorstore.as_retriever(k=4)
 
-# Create an instance of ChatMessageHistory to serve as memory
-memory = ChatMessageHistory()
+# Define the query transforming retriever chain
+query_transform_prompt = ChatPromptTemplate.from_messages([
+    MessagesPlaceholder(variable_name="messages"),
+    ("user", "Given the above conversation, generate a search query to look up in order to get information relevant to the conversation. Only respond with the query, nothing else.")
+])
 
-# Define the conversational retrieval chain with ChatGroq including memory
-conversational_retrieval_chain = ChatGroq(
-    temperature=0, 
-    groq_api_key=GROQ_API_KEY, 
-    model_name="llama3-8b-8192", 
-    # memory=memory
+query_transforming_retriever_chain = RunnableBranch(
+    (lambda x: len(x.get("messages", [])) == 1,
+        (lambda x: x["messages"][-1].content) | retriever,
+    ),
+    query_transform_prompt | chat | StrOutputParser() | retriever,
+).with_config(run_name="chat_retriever_chain")
+
+# Define the question answering prompt
+question_answering_prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer the user's questions based on the below context:\n\n{context}"),
+    MessagesPlaceholder(variable_name="messages")
+])
+
+# Create the document chain
+document_chain = create_stuff_documents_chain(chat, question_answering_prompt)
+
+# Combine the chains into the conversational retrieval chain
+conversational_retrieval_chain = RunnablePassthrough.assign(
+    context=query_transforming_retriever_chain,
+).assign(
+    answer=document_chain,
 )
 
-# Function to handle the chatbot responses
-def respond(message, chat_history):
-    # Add user message to the chat history
-    conversational_retrieval_chain.memory.add_user_message(message)
-    
-    # Get the response from the chain
-    response = conversational_retrieval_chain.invoke({"messages": conversational_retrieval_chain.memory.messages})
-    
-    # Add the AI response to the chat history
-    conversational_retrieval_chain.memory.add_ai_message(response['answer'])
-    
-    # Update chat history
-    chat_history.append((message, response['answer']))
-    return "", chat_history
+# Initialize Streamlit app
+st.title("Consumer Protection Assistant")
+st.write("Ask me anything about the Guidelines for Consumer Protection")
 
-# Create the Gradio interface
-with gr.Blocks() as demo:
-    chatbot = gr.Chatbot()
-    msg = gr.Textbox()
-    clear = gr.Button("Clear")
-    
-    # Connect the submit action of the textbox to the respond function
-    msg.submit(respond, [msg, chatbot], [msg, chatbot])
-    
-    # Clear the chat history
-    clear.click(lambda: None, None, chatbot, queue=False)
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = ChatMessageHistory()
 
-# Launch the interface
-demo.launch(debug=True, share=True)
+if 'language' not in st.session_state:
+    language = st.selectbox('Choose a language:', ('English', 'Swahili'))
+    if st.button('Confirm'):
+        st.session_state.language = language
+        st.session_state.chat_history.add_user_message(f"You have selected {language}.")
+else:
+    st.write(f"Language selected: {st.session_state.language}")
+
+    # Chat input and message display
+    if prompt := st.chat_input("You: "):
+        # Add user message to chat history
+        st.session_state.chat_history.add_user_message(prompt)
+        
+        # Create a new system prompt with the selected language
+        system_prompt = f"You are a helpful assistant. Please respond in {st.session_state.language.lower()}."
+        human_prompt = "{text}"
+        prompt_template = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human_prompt)])
+        
+        # Build the conversational chain with the updated prompt template
+        chain = prompt_template | chat
+
+        # Combine the chains into the conversational retrieval chain with updated language context
+        conversational_retrieval_chain = RunnablePassthrough.assign(
+            context=query_transforming_retriever_chain,
+        ).assign(
+            answer=document_chain,
+        )
+
+        try:
+            # Invoke the conversational retrieval chain
+            response = conversational_retrieval_chain.invoke({"messages": st.session_state.chat_history.messages})
+            
+            # Add AI message to chat history
+            st.session_state.chat_history.add_ai_message(response["answer"])
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+
+    # Display chat messages
+    for msg in st.session_state.chat_history.messages:
+        if isinstance(msg, HumanMessage):
+            st.chat_message("user").write(msg.content)
+        else:
+            st.chat_message("assistant").write(msg.content)
