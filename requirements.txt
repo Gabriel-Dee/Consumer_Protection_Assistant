@@ -3,4 +3,4 @@ langchain-openai
 langchain-groq
 langchain-chroma
 beautifulsoup4
-gradio
+streamlit

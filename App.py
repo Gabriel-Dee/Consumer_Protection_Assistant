@@ -2,19 +2,14 @@
 import os 
 import dotenv
 import streamlit as st
-from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
-from langchain_core.messages import AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ChatMessageHistory
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.memory import ChatMessageHistory
-from typing import Dict
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableBranch
@@ -78,7 +73,7 @@ conversational_retrieval_chain = RunnablePassthrough.assign(
 )
 
 # Initialize Streamlit app
-st.title("Conversational Chatbot")
+st.title("Consumer Protection Assistant")
 st.write("Ask me anything about the Guidelines for Consumer Protection")
 
 if 'chat_history' not in st.session_state:
