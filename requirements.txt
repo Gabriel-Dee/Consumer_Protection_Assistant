@@ -4,3 +4,5 @@ langchain-groq
 langchain-chroma
 beautifulsoup4
 streamlit
+fastapi
+uvicorn
