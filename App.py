@@ -6,6 +6,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ChatMessageHistory
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -23,7 +24,7 @@ Model = 'llama3-8b-8192'
 chat = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name=Model)
 
 # Define the prompt templates
-system_prompt = "You are a helpful assistant."
+system_prompt = "Answer the user's questions based on the below context. If the context is not relevant to the user's question, respond with 'I'm sorry, I can only answer questions related to the provided context.'"
 human_prompt = "{text}"
 prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human_prompt)])
 
@@ -42,10 +43,10 @@ vectorstore = Chroma(persist_directory=persist_dir, embedding_function=embedding
 # Define the retriever
 retriever = vectorstore.as_retriever(k=4)
 
-# Define the question answering prompt with validation
-question_answering_prompt = ChatPromptTemplate.from_messages([
-    ("system", "Answer the user's questions based on the below context. If the context is not relevant to the user's question, respond with 'I'm sorry, I can only answer questions related to the provided context.'\n\n{context}"),
-    MessagesPlaceholder(variable_name="messages")
+# Define the query transforming retriever chain
+query_transform_prompt = ChatPromptTemplate.from_messages([
+    MessagesPlaceholder(variable_name="messages"),
+    ("user", "Given the above conversation, generate a search query to look up in order to get information relevant to the conversation. Only respond with the query, nothing else.")
 ])
 
 query_transforming_retriever_chain = RunnableBranch(
@@ -57,7 +58,7 @@ query_transforming_retriever_chain = RunnableBranch(
 
 # Define the question answering prompt
 question_answering_prompt = ChatPromptTemplate.from_messages([
-    ("system", "Answer the user's questions based on the below context:\n\n{context}"),
+    ("system", "Answer the user's questions based on the below context. If the context is not relevant to the user's question, respond with 'I'm sorry, I can only answer questions related to the provided context.'\n\n{context}"),
     MessagesPlaceholder(variable_name="messages")
 ])
 
