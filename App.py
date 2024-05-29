@@ -2,17 +2,16 @@
 import os 
 import dotenv
 import streamlit as st
-from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ChatMessageHistory
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
+from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.memory import ChatMessageHistory
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableBranch
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableBranch
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
 # Load environment variables
 dotenv.load_dotenv()
@@ -20,11 +19,12 @@ GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # Setup the chat model
-Model = 'llama3-8b-8192'
-chat = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name=Model)
+Model = "gpt-3.5-turbo-1106"
+# Model = "gpt-4o"
+chat = ChatOpenAI(model=Model, temperature=0.2)
 
 # Define the prompt templates
-system_prompt = "Answer the user's questions based on the below context. If the context is not relevant to the user's question, respond with 'I'm sorry, I can only answer questions related to the provided context.'"
+system_prompt = "Answer the user's questions based on the below context in both english and kiswahili. If the context is not relevant to the user's question, respond with 'I'm sorry, I can only answer questions related to the provided context.' in both english and kiswahili language, and respond to greetings too in english and kiswahili"
 human_prompt = "{text}"
 prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human_prompt)])
 
