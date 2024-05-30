@@ -19,8 +19,8 @@ GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # Setup the chat model
-Model = "gpt-3.5-turbo-1106"
-# Model = "gpt-4o"
+# Model = "gpt-3.5-turbo-1106"
+Model = "gpt-4o"
 chat = ChatOpenAI(model=Model, temperature=0.2)
 
 # Define the prompt templates
